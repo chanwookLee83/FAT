@@ -1,0 +1,18 @@
+{
+  "name": "설비검수 — Equipment Acceptance",
+  "short_name": "설비검수",
+  "description": "장비 제작 후 FAT/SAT 검수를 현장에서 기록하는 체크리스트 앱",
+  "start_url": "./index.html",
+  "scope": "./",
+  "display": "standalone",
+  "orientation": "any",
+  "background_color": "#14181D",
+  "theme_color": "#14181D",
+  "lang": "ko",
+  "dir": "ltr",
+  "icons": [
+    { "src": "icons/icon-192.png", "sizes": "192x192", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-512.png", "sizes": "512x512", "type": "image/png", "purpose": "any" },
+    { "src": "icons/icon-maskable-512.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

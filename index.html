@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+<title>설비검수 — Equipment Acceptance</title>
+<meta name="description" content="장비 제작 후 FAT/SAT 검수를 현장에서 기록하는 체크리스트 앱" />
+<meta name="theme-color" content="#f2f4f6" />
+<link rel="manifest" href="manifest.webmanifest" />
+<link rel="icon" type="image/png" sizes="32x32" href="icons/favicon-32.png" />
+<link rel="icon" type="image/png" sizes="16x16" href="icons/favicon-16.png" />
+<link rel="apple-touch-icon" href="icons/apple-touch-icon.png" />
+<meta name="apple-mobile-web-app-capable" content="yes" />
+<meta name="apple-mobile-web-app-status-bar-style" content="default" />
+<meta name="apple-mobile-web-app-title" content="설비검수" />
+<link rel="stylesheet" href="styles.css" />
+</head>
+<body>
+
+<div id="app">
+  <div class="status-banner" id="offlineBanner">
+    <span class="status-banner__dot"></span>
+    <span>오프라인 상태입니다 — 변경사항은 이 기기에 저장됩니다</span>
+  </div>
+  <div class="install-strip" id="installStrip">
+    <span class="install-strip__text">홈 화면에 앱을 추가하면 오프라인에서도 바로 열 수 있어요</span>
+    <button class="btn btn--sm btn--primary" id="installBtn">추가</button>
+    <button class="icon-btn" id="installDismiss" aria-label="닫기" style="width:28px;height:28px;">✕</button>
+  </div>
+
+  <header class="topbar">
+    <button class="topbar__back hidden" id="backBtn" aria-label="뒤로">←</button>
+    <div class="topbar__titles">
+      <div class="topbar__eyebrow" id="topbarEyebrow">EQUIPMENT ACCEPTANCE</div>
+      <div class="topbar__title" id="topbarTitle">설비검수</div>
+    </div>
+    <div class="topbar__action" id="topbarAction"></div>
+  </header>
+
+  <main id="main"></main>
+</div>
+
+<div id="toast"></div>
+<div id="printArea"></div>
+
+<script src="app.js" defer></script>
+</body>
+</html>
