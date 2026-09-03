@@ -421,7 +421,9 @@
   /* ---------------------------------------------------------------------
      View: Home (검수 이력)
   --------------------------------------------------------------------- */
-  const homeState = { tab: "all", query: "" }; // persists while the app stays open
+  const homeState = { tab: "all", query: "", selectedId: null }; // persists while the app stays open
+
+  const isWide = () => window.matchMedia("(min-width: 900px)").matches;
 
   const TYPE_ORDER = [
     ["FAT", "공장검수"],
@@ -517,9 +519,11 @@
       };
 
       const layout = h(`<div class="home-layout"></div>`);
-      const col = h(`<div class="home-col"></div>`);
+      const listCol = h(`<div class="home-list"></div>`);
+      const detailCol = h(`<div class="home-detail"></div>`);
       main.appendChild(layout);
-      layout.appendChild(col);
+      layout.appendChild(listCol);
+      layout.appendChild(detailCol);
 
       const toolbar = h(`
         <div class="home-toolbar">
@@ -531,14 +535,35 @@
           <input type="search" class="search-input" id="homeSearch" placeholder="장비명 · 검수자 검색" value="${esc(homeState.query)}" />
         </div>
       `);
-      col.appendChild(toolbar);
+      listCol.appendChild(toolbar);
 
       const listWrap = h(`<div id="sessionListWrap"></div>`);
-      col.appendChild(listWrap);
+      listCol.appendChild(listWrap);
 
-      const rail = h(`<aside class="home-rail"></aside>`);
-      rail.innerHTML = railHtml(typeStats(all));
-      layout.appendChild(rail);
+      const stats = typeStats(all);
+
+      // 우측(모바일에선 목록 아래) 패널: 선택된 검수가 있으면 그 내용을,
+      // 없으면 FAT/SAT 요약을 보여준다.
+      function renderDetail() {
+        const sel =
+          homeState.selectedId && isWide()
+            ? all.find((i) => i.id === homeState.selectedId)
+            : null;
+        detailCol.innerHTML = "";
+        detailCol.appendChild(sel ? homeDetailView(sel) : homeOverview(stats));
+      }
+
+      function selectInspection(id) {
+        if (isWide()) {
+          homeState.selectedId = id;
+          renderDetail();
+          $$(".session-card", listWrap).forEach((el) =>
+            el.classList.toggle("is-active", el.dataset.id === id)
+          );
+        } else {
+          navigate(`/i/${id}`);
+        }
+      }
 
       function applyFilter() {
         let list = all;
@@ -580,11 +605,12 @@
             </section>
           `);
           const listEl = $(".session-list", sec);
-          group.forEach((insp) => listEl.appendChild(sessionCard(insp)));
+          group.forEach((insp) => listEl.appendChild(sessionCard(insp, selectInspection)));
           listWrap.appendChild(sec);
         });
       }
       renderList();
+      renderDetail();
 
       $$(".tabbar__opt", toolbar).forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -610,15 +636,16 @@
     importFile.addEventListener("change", handleImportFile);
   }
 
-  function sessionCard(insp) {
+  function sessionCard(insp, onSelect) {
     const c = counts(insp.items);
     const pct = (n) => (c.total ? (n / c.total) * 100 : 0);
     const v = verdictOf(insp);
     const dateLine = insp.completedAt
       ? `${esc(insp.inspector || "검수자 미지정")} · ${esc(insp.date)} · 완료 ${fmtDate(insp.completedAt)}`
       : `${esc(insp.inspector || "검수자 미지정")} · ${esc(insp.date)}`;
+    const active = homeState.selectedId === insp.id && isWide() ? " is-active" : "";
     const card = h(`
-      <button class="session-card" data-id="${insp.id}">
+      <button class="session-card${active}" data-id="${insp.id}">
         <span class="session-card__status" style="background:${v.wash};color:${v.color}">${v.label}</span>
         <div class="session-card__name">${esc(insp.equipmentName)}</div>
         <div class="session-card__meta">${dateLine}</div>
@@ -635,8 +662,97 @@
         </div>
       </button>
     `);
-    card.addEventListener("click", () => navigate(`/i/${insp.id}`));
+    card.addEventListener("click", () => (onSelect ? onSelect(insp.id) : navigate(`/i/${insp.id}`)));
     return card;
+  }
+
+  // Right-hand overview shown when no inspection is selected.
+  function homeOverview(stats) {
+    return h(`
+      <div class="home-pane home-pane--overview">
+        <div class="home-pane__hint">FAT · SAT 구분별 검수 현황입니다. 목록에서 검수를 선택하면 상세 내용을 볼 수 있습니다.</div>
+        <div class="home-rail">${railHtml(stats)}</div>
+      </div>
+    `);
+  }
+
+  // Right-hand preview of a single inspection: verdict, tallies, category
+  // breakdown, failed items, and shortcuts into the full screens.
+  function homeDetailView(insp) {
+    const c = counts(insp.items);
+    const v = verdictOf(insp);
+    const pct = (n) => (c.total ? (n / c.total) * 100 : 0);
+    const el = h(`
+      <div class="home-pane">
+        <div class="home-pane__top">
+          <span class="session-group__badge session-group__badge--${(insp.type || "FAT").toLowerCase()}">${esc(insp.type || "FAT")}</span>
+          <span class="home-pane__status" style="background:${v.wash};color:${v.color}">${v.label}</span>
+        </div>
+        <div class="home-pane__name">${esc(insp.equipmentName)}</div>
+        <div class="home-pane__meta">${esc(insp.inspector || "검수자 미지정")} · ${esc(insp.date)}${insp.completedAt ? ` · 완료 ${fmtDate(insp.completedAt)}` : ""}</div>
+
+        <div class="gauge" style="margin-top:14px;">
+          <span class="gauge__seg gauge__seg--pass" style="width:${pct(c.pass)}%"></span>
+          <span class="gauge__seg gauge__seg--fail" style="width:${pct(c.fail)}%"></span>
+          <span class="gauge__seg gauge__seg--na" style="width:${pct(c.na)}%"></span>
+        </div>
+        <div class="gauge-legend">
+          <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--pass)"></span>합격 ${c.pass}</span>
+          <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--fail)"></span>불합격 ${c.fail}</span>
+          <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--na)"></span>해당없음 ${c.na}</span>
+          ${c.pending ? `<span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--text-faint)"></span>대기 ${c.pending}</span>` : ""}
+        </div>
+
+        <div class="home-pane__cats"></div>
+        <div class="home-pane__actions">
+          <button class="btn btn--primary" data-act="open">전체 체크리스트 열기</button>
+          <button class="btn" data-act="summary">요약 · 서명</button>
+          <button class="btn" data-act="print">인쇄 / PDF</button>
+        </div>
+      </div>
+    `);
+
+    const catsWrap = $(".home-pane__cats", el);
+    categoriesOf(insp).forEach((cat) => {
+      const items = insp.items.filter((it) => it.catId === cat.id);
+      const cc = counts(items);
+      const recorded = cc.pass + cc.fail + cc.na;
+      catsWrap.appendChild(
+        h(`
+          <div class="home-pane__cat">
+            <span class="home-pane__cat-bar" style="background:var(${cat.varColor})"></span>
+            <span class="home-pane__cat-name">${esc(cat.name)}</span>
+            <span class="home-pane__cat-nums">
+              <b style="color:var(--pass)">${cc.pass}</b> ·
+              <b style="color:var(--fail)">${cc.fail}</b>
+              <span class="home-pane__cat-total">${recorded}/${cc.total}</span>
+            </span>
+          </div>
+        `)
+      );
+    });
+
+    const fails = insp.items.filter((it) => it.result === "fail");
+    if (fails.length) {
+      const fb = h(`<div class="home-pane__fails"><div class="home-pane__fails-title">불합격 ${fails.length}건</div></div>`);
+      fails.forEach((it) =>
+        fb.appendChild(
+          h(`<div class="home-pane__fail">${esc(it.name)}${it.comment ? ` <span>— ${esc(it.comment)}</span>` : ""}</div>`)
+        )
+      );
+      catsWrap.after(fb);
+    }
+
+    $$("[data-act]", el).forEach((b) =>
+      b.addEventListener("click", () => {
+        const a = b.dataset.act;
+        if (a === "open") navigate(`/i/${insp.id}`);
+        else if (a === "summary") navigate(`/i/${insp.id}/summary`);
+        else if (a === "print") printInspection(insp);
+      })
+    );
+
+    return el;
   }
 
   /* ---------------------------------------------------------------------

@@ -2,7 +2,7 @@
    Bump CACHE_VERSION whenever a cached file changes so clients pick up
    the new build instead of a stale offline copy. */
 
-const CACHE_VERSION = "v9";
+const CACHE_VERSION = "v10";
 const CACHE_NAME = `eqi-shell-${CACHE_VERSION}`;
 
 const SCOPE = self.registration.scope;
