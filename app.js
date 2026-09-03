@@ -435,11 +435,21 @@
       const items = all.filter((i) => (i.type || "FAT") === type);
       const done = items.filter((i) => i.completedAt);
       const pass = done.filter((i) => verdictOf(i).key === "pass").length;
+      // 항목 단위 집계 — 이 구분의 모든 검수 항목을 합산
+      const it = { pass: 0, fail: 0, na: 0, pending: 0 };
+      items.forEach((i) => {
+        const cc = counts(i.items);
+        it.pass += cc.pass;
+        it.fail += cc.fail;
+        it.na += cc.na;
+        it.pending += cc.pending;
+      });
       return {
         total: items.length,
         done: done.length,
         pass,
         rate: done.length ? Math.round((pass / done.length) * 100) : null,
+        items: it,
       };
     };
     const doneTotal = all.filter((i) => i.completedAt).length;
@@ -463,6 +473,8 @@
           </div>
           <div class="rail-card__row"><span>완료 / 전체</span><b>${t.done} / ${t.total}</b></div>
           <div class="rail-card__row"><span>합격률</span><b>${t.rate == null ? "–" : t.rate + "%"}</b></div>
+          <div class="rail-card__row"><span>항목 합격 · 불합격</span><b>${t.items.pass} · ${t.items.fail}</b></div>
+          <div class="rail-card__row"><span>해당없음 · 대기</span><b>${t.items.na} · ${t.items.pending}</b></div>
         </div>`;
     };
     return `
@@ -618,7 +630,8 @@
         <div class="gauge-legend">
           <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--pass)"></span>합격 ${c.pass}</span>
           <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--fail)"></span>불합격 ${c.fail}</span>
-          <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--text-faint)"></span>대기 ${c.pending}</span>
+          <span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--na)"></span>해당없음 ${c.na}</span>
+          ${c.pending ? `<span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--text-faint)"></span>대기 ${c.pending}</span>` : ""}
         </div>
       </button>
     `);
