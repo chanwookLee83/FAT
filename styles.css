@@ -557,7 +557,7 @@ main {
   }
   .home-layout {
     display: grid;
-    grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     gap: 26px;
     align-items: start;
   }
