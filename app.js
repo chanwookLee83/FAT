@@ -423,6 +423,58 @@
   --------------------------------------------------------------------- */
   const homeState = { tab: "all", query: "" }; // persists while the app stays open
 
+  const TYPE_ORDER = [
+    ["FAT", "공장검수"],
+    ["SAT", "현장검수"],
+  ];
+
+  // Per-type roll-up for the home rail: how many records, how many done,
+  // and the pass rate among the done ones.
+  function typeStats(all) {
+    const mk = (type) => {
+      const items = all.filter((i) => (i.type || "FAT") === type);
+      const done = items.filter((i) => i.completedAt);
+      const pass = done.filter((i) => verdictOf(i).key === "pass").length;
+      return {
+        total: items.length,
+        done: done.length,
+        pass,
+        rate: done.length ? Math.round((pass / done.length) * 100) : null,
+      };
+    };
+    const doneTotal = all.filter((i) => i.completedAt).length;
+    return {
+      FAT: mk("FAT"),
+      SAT: mk("SAT"),
+      doneTotal,
+      progressTotal: all.length - doneTotal,
+    };
+  }
+
+  function railHtml(s) {
+    const block = (type, label) => {
+      const t = s[type];
+      if (!t.total) return "";
+      return `
+        <div class="rail-card">
+          <div class="rail-card__title">
+            <span class="session-group__badge session-group__badge--${type.toLowerCase()}">${type}</span>
+            <span>${label}</span>
+          </div>
+          <div class="rail-card__row"><span>완료 / 전체</span><b>${t.done} / ${t.total}</b></div>
+          <div class="rail-card__row"><span>합격률</span><b>${t.rate == null ? "–" : t.rate + "%"}</b></div>
+        </div>`;
+    };
+    return `
+      <div class="rail-card rail-card--sum">
+        <div class="rail-card__row"><span>완료</span><b>${s.doneTotal}</b></div>
+        <div class="rail-card__row"><span>진행중</span><b>${s.progressTotal}</b></div>
+      </div>
+      ${block("FAT", "공장검수")}
+      ${block("SAT", "현장검수")}
+    `;
+  }
+
   function renderHome() {
     const all = loadAll().sort((a, b) => b.updatedAt - a.updatedAt);
 
@@ -452,6 +504,11 @@
         done: all.filter((i) => i.completedAt).length,
       };
 
+      const layout = h(`<div class="home-layout"></div>`);
+      const col = h(`<div class="home-col"></div>`);
+      main.appendChild(layout);
+      layout.appendChild(col);
+
       const toolbar = h(`
         <div class="home-toolbar">
           <div class="tabbar">
@@ -462,10 +519,14 @@
           <input type="search" class="search-input" id="homeSearch" placeholder="장비명 · 검수자 검색" value="${esc(homeState.query)}" />
         </div>
       `);
-      main.appendChild(toolbar);
+      col.appendChild(toolbar);
 
       const listWrap = h(`<div id="sessionListWrap"></div>`);
-      main.appendChild(listWrap);
+      col.appendChild(listWrap);
+
+      const rail = h(`<aside class="home-rail"></aside>`);
+      rail.innerHTML = railHtml(typeStats(all));
+      layout.appendChild(rail);
 
       function applyFilter() {
         let list = all;
@@ -491,9 +552,25 @@
           );
           return;
         }
-        const ul = h(`<div class="session-list"></div>`);
-        list.forEach((insp) => ul.appendChild(sessionCard(insp)));
-        listWrap.appendChild(ul);
+        // FAT / SAT 구분해서 섹션으로 나눠 보여준다.
+        TYPE_ORDER.forEach(([type, label]) => {
+          const group = list.filter((i) => (i.type || "FAT") === type);
+          if (!group.length) return;
+          const done = group.filter((i) => i.completedAt).length;
+          const sec = h(`
+            <section class="session-group">
+              <div class="session-group__head">
+                <span class="session-group__badge session-group__badge--${type.toLowerCase()}">${type}</span>
+                <span class="session-group__label">${label}</span>
+                <span class="session-group__count">${group.length}건${done && done !== group.length ? ` · 완료 ${done}` : ""}</span>
+              </div>
+              <div class="session-list"></div>
+            </section>
+          `);
+          const listEl = $(".session-list", sec);
+          group.forEach((insp) => listEl.appendChild(sessionCard(insp)));
+          listWrap.appendChild(sec);
+        });
       }
       renderList();
 
@@ -531,7 +608,6 @@
     const card = h(`
       <button class="session-card" data-id="${insp.id}">
         <span class="session-card__status" style="background:${v.wash};color:${v.color}">${v.label}</span>
-        <span class="session-card__type session-card__type--${insp.type.toLowerCase()}">${insp.type}</span>
         <div class="session-card__name">${esc(insp.equipmentName)}</div>
         <div class="session-card__meta">${dateLine}</div>
         <div class="gauge">
