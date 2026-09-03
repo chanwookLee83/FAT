@@ -50,11 +50,13 @@ icons/                 앱 아이콘 (192/512/마스커블/파비콘)
    git push -u origin main
    ```
 
-2. GitHub 저장소 → **Settings → Pages** 로 이동합니다.
-3. **Source**를 `Deploy from a branch`로 설정하고, 브랜치는 `main`,
-   폴더는 `/ (root)`를 선택한 뒤 저장합니다.
-4. 몇 분 뒤 `https://<사용자명>.github.io/<저장소명>/` 에서 접속됩니다.
-5. 모바일/태블릿 브라우저로 접속 후 "홈 화면에 추가"를 하면 앱처럼
+2. GitHub 저장소 → **Settings → Pages → Source** 를 `GitHub Actions`로
+   설정합니다. `.github/workflows/pages.yml` 워크플로가 포함돼 있어
+   이후 `main`에 push할 때마다 자동으로 배포됩니다.
+   (`Deploy from a branch` 방식을 쓰려면 `main` / `/ (root)` 선택.)
+3. 몇 분 뒤 `https://<사용자명>.github.io/<저장소명>/` 에서 접속됩니다.
+   이 저장소는 `https://chanwooklee83.github.io/FAT/` 입니다.
+4. 모바일/태블릿 브라우저로 접속 후 "홈 화면에 추가"를 하면 앱처럼
    설치되어 오프라인에서도 열립니다.
 
 ### 업데이트 배포 시 주의
