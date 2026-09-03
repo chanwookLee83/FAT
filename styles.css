@@ -34,6 +34,7 @@
   --cat-mech: #c8790b;
   --cat-elec: #1e8fa6;
   --cat-process: #2f9e63;
+  --cat-utility: #3f7fd6;
   --cat-doc: #6d63d6;
 
   --radius-sm: 6px;
@@ -606,6 +607,19 @@ main {
   font-size: 14px;
   flex: 1;
   padding-top: 1px;
+}
+.item__dept {
+  display: inline-block;
+  margin-left: 6px;
+  padding: 1px 6px;
+  border-radius: 999px;
+  font-family: var(--font-mono);
+  font-size: 10.5px;
+  font-weight: 600;
+  color: var(--cat-utility);
+  background: rgba(63, 127, 214, 0.12);
+  vertical-align: middle;
+  white-space: nowrap;
 }
 
 .item__controls {

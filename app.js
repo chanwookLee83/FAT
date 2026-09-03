@@ -17,68 +17,174 @@
      gets a token color so the item list reads like a color-coded panel
      rather than a flat form.
   --------------------------------------------------------------------- */
-  const CATEGORIES = [
+  /*
+     FAT(공장검수)는 제작처에서 출하 전, 검수팀 위주로 "장비 자체"를 확인하고,
+     SAT(현장검수)는 설치 후 실제 라인·유틸리티·상위시스템까지 물려 놓고
+     생산 · 품질 · 설비보전 · 안전환경 · 정보시스템 등 여러 부서가 함께
+     확인하므로 항목이 더 세분화되어 있고 담당 부서(dept)를 병기한다.
+  */
+  const CATEGORY_META = {
+    safety:  { name: "안전",                  varColor: "--cat-safety" },
+    mech:    { name: "기계 · 구조",            varColor: "--cat-mech" },
+    utility: { name: "유틸리티 연결",          varColor: "--cat-utility" },
+    elec:    { name: "전기 · 제어 (PLC/HMI)",  varColor: "--cat-elec" },
+    process: { name: "공정 · 성능",            varColor: "--cat-process" },
+    doc:     { name: "문서 · 인수인계",        varColor: "--cat-doc" },
+  };
+
+  // FAT — 항목은 문자열. 제작처 출하 전 검수.
+  const FAT_TEMPLATE = [
     {
-      id: "safety",
-      name: "안전",
-      varColor: "--cat-safety",
+      cat: "safety",
       items: [
         "비상정지(E-STOP) 버튼 작동 및 위치 표시",
         "안전문 · 라이트커튼 인터록 동작",
         "안전펜스 및 진입 감지 센서",
         "경고등 · 경보음(부저) 동작",
-        "접지 및 누전 상태",
+        "잔류 에너지 차단(LOTO) 포인트 표시",
+        "접지 및 누전 차단 상태",
       ],
     },
     {
-      id: "mech",
-      name: "기계 · 구조",
-      varColor: "--cat-mech",
+      cat: "mech",
       items: [
-        "프레임 및 지그 체결 상태",
+        "프레임 및 지그 체결 · 수평 상태",
         "구동부(실린더 · 모터) 이상음 · 진동",
         "배관 · 배선 정리 및 라벨링",
-        "도장 · 마감 상태",
-        "이동 · 반출입 동선 확보",
+        "도장 · 마감 · 방청 상태",
+        "윤활 · 공압 유닛(FRL) 설정값",
+        "안전커버 · 가드 장착 상태",
       ],
     },
     {
-      id: "elec",
-      name: "전기 · 제어 (PLC/HMI)",
-      varColor: "--cat-elec",
+      cat: "elec",
       items: [
-        "PLC I/O 신호 정상 동작",
-        "HMI 화면 표시 및 조작 반응",
-        "센서(포토 · 근접) 신호 안정성",
+        "PLC I/O 신호 강제(포싱) 시험",
+        "HMI 화면 표시 · 조작 반응 · 알람 이력",
+        "센서(포토 · 근접) 감도 및 여유율",
         "비상 시 PLC 인터록 로직 검증",
         "전장반 배선과 회로도 일치 여부",
+        "소프트웨어 · 펌웨어 버전 기록 및 백업",
       ],
     },
     {
-      id: "process",
-      name: "공정 · 성능",
-      varColor: "--cat-process",
+      cat: "process",
       items: [
-        "사이클타임 목표치 충족",
-        "토크 검사 정밀도(공차 이내)",
-        "바코드 · 라벨 인식률",
-        "불량품 자동 배출 기능",
-        "연속가동(내구) 테스트 결과",
+        "사이클타임 목표치 충족(시뮬레이션 조건)",
+        "토크 · 압입 등 계측 정밀도(공차 이내)",
+        "계측기 교정성적서 확인",
+        "바코드 · 비전 인식률",
+        "불량품 자동 배출 · 격리 기능",
+        "공회전(드라이런) 연속가동 시험",
       ],
     },
     {
-      id: "doc",
-      name: "문서 · 기타",
-      varColor: "--cat-doc",
+      cat: "doc",
       items: [
-        "도면과 실물 일치 여부",
-        "취급설명서 · 정비지침서 제공",
-        "예비품(스페어) 리스트 확인",
-        "작업자 교육 완료",
-        "PFMEA / Control Plan 연계 확인",
+        "도면(기계 · 전기)과 실물 일치 여부",
+        "부품 리스트(BOM) · 제조사 정보",
+        "취급설명서 · 정비지침서 초안",
+        "예비품(스페어) 리스트",
+        "CE / 안전 인증 관련 자료",
+        "FAT 펀치리스트(미결 항목) 작성 및 합의",
       ],
     },
   ];
+
+  // SAT — 항목은 { name, dept }. 설치 후 현장검수, 부서 교차 확인.
+  const SAT_TEMPLATE = [
+    {
+      cat: "safety",
+      items: [
+        { name: "운송 중 안전장치 손상 · 유실 여부", dept: "설비보전" },
+        { name: "비상정지 · 인터록 재시험(설치 후)", dept: "설비보전" },
+        { name: "현장 안전펜스 · 방책 배치 및 통로 확보", dept: "안전환경" },
+        { name: "LOTO 절차 적용 및 표지 부착", dept: "안전환경" },
+        { name: "소음 · 분진 · 유해가스 현장 측정", dept: "안전환경" },
+        { name: "위험성평가 결과 반영 확인", dept: "안전환경" },
+        { name: "접지저항 측정값 기준 이내", dept: "설비보전" },
+      ],
+    },
+    {
+      cat: "mech",
+      items: [
+        { name: "설치 위치 수평 · 레벨링 재조정", dept: "설비보전" },
+        { name: "앵커 · 체결부 재체결(토크 확인)", dept: "설비보전" },
+        { name: "반입 동선 · 양중 계획 실행 결과", dept: "생산기술" },
+        { name: "주변 설비와 간섭 · 이격거리 확인", dept: "생산기술" },
+        { name: "배관 · 덕트 현장 연결 및 누설 시험", dept: "설비보전" },
+      ],
+    },
+    {
+      cat: "utility",
+      items: [
+        { name: "전원 용량 · 전압 · 상 확인 및 결선", dept: "설비보전" },
+        { name: "공압 공급 압력 · 유량 · 수분(드레인)", dept: "설비보전" },
+        { name: "용수 · 냉각수 · 스팀 공급 규격", dept: "설비보전" },
+        { name: "배기 · 집진 · 환기 연결", dept: "안전환경" },
+        { name: "정전 · 단수 시 안전 정지 동작", dept: "설비보전" },
+      ],
+    },
+    {
+      cat: "elec",
+      items: [
+        { name: "현장 접지 · 서지 보호 확인", dept: "설비보전" },
+        { name: "PLC/HMI 실입출력 동작(실센서 · 실액추에이터)", dept: "생산기술" },
+        { name: "상위 시스템(MES/SCADA) 연동 및 데이터 수집", dept: "정보시스템" },
+        { name: "설비 네트워크 IP · 보안정책 등록", dept: "정보시스템" },
+        { name: "바코드 / RFID 현장 리더 통신", dept: "정보시스템" },
+        { name: "소프트웨어 최종 버전 반영 및 백업 이관", dept: "설비보전" },
+        { name: "알람 · 경보 모니터링 연계", dept: "정보시스템" },
+      ],
+    },
+    {
+      cat: "process",
+      items: [
+        { name: "실제 자재로 초기 양산 시운전", dept: "생산" },
+        { name: "사이클타임 현장 실측(목표 대비)", dept: "생산기술" },
+        { name: "공정능력(Cpk / Ppk) 측정", dept: "품질" },
+        { name: "계측 정밀도 · Gage R&R", dept: "품질" },
+        { name: "초 · 중 · 종물 검사 및 기준 합격", dept: "품질" },
+        { name: "연속가동(내구) 테스트 — 실 근무 시프트 기준", dept: "생산" },
+        { name: "OEE(가동률 · 성능 · 품질) 초기 측정", dept: "생산기술" },
+        { name: "불량 유형별 검출 · 배출률 검증", dept: "품질" },
+      ],
+    },
+    {
+      cat: "doc",
+      items: [
+        { name: "도면 · 회로도 As-Built 최신본 반영", dept: "생산기술" },
+        { name: "취급설명서 · 정비지침서 최종본", dept: "설비보전" },
+        { name: "예비품(스페어) 입고 및 위치 지정", dept: "구매/자재" },
+        { name: "정기점검(PM) 주기 · 체크시트 등록", dept: "설비보전" },
+        { name: "작업자 · 보전요원 교육 완료 및 서명", dept: "생산" },
+        { name: "PFMEA / Control Plan 현행화", dept: "품질" },
+        { name: "FAT 펀치리스트 클로징 확인", dept: "생산기술" },
+        { name: "최종 인수확인서 및 보증조건 합의", dept: "생산기술" },
+      ],
+    },
+  ];
+
+  const TEMPLATES = { FAT: FAT_TEMPLATE, SAT: SAT_TEMPLATE };
+
+  function templateFor(type) {
+    return TEMPLATES[type] || FAT_TEMPLATE;
+  }
+
+  // Ordered, de-duplicated category list actually present in an inspection,
+  // resolved to display meta. Used by the checklist and the printable report
+  // so a category with no items for this type never renders an empty group.
+  function categoriesOf(insp) {
+    const seen = [];
+    insp.items.forEach((it) => {
+      if (!seen.includes(it.catId)) seen.push(it.catId);
+    });
+    return seen.map((id) => ({ id, ...(CATEGORY_META[id] || { name: id, varColor: "--cat-doc" }) }));
+  }
+
+  function templateCount(type) {
+    return templateFor(type).reduce((n, g) => n + g.items.length, 0);
+  }
 
   /* ---------------------------------------------------------------------
      Storage
@@ -126,14 +232,17 @@
     return Date.now().toString(36) + Math.random().toString(36).slice(2, 8);
   }
 
-  function makeChecklist() {
+  function makeChecklist(type) {
     const cats = [];
-    CATEGORIES.forEach((cat) => {
-      cat.items.forEach((name, i) => {
+    templateFor(type).forEach((group) => {
+      group.items.forEach((entry, i) => {
+        const name = typeof entry === "string" ? entry : entry.name;
+        const dept = typeof entry === "string" ? "" : entry.dept || "";
         cats.push({
-          id: `${cat.id}-${i}`,
-          catId: cat.id,
+          id: `${group.cat}-${i}`,
+          catId: group.cat,
           name,
+          dept,
           result: null, // 'pass' | 'fail' | 'na' | null
           comment: "",
           photos: [],
@@ -152,7 +261,7 @@
       date: new Date().toISOString().slice(0, 10),
       createdAt: Date.now(),
       updatedAt: Date.now(),
-      items: makeChecklist(),
+      items: makeChecklist(type),
       signers: [
         { id: uid(), role: "장비 제작처", org: "", name: "", dataUrl: null },
         { id: uid(), role: "인수처(발주처)", org: "", name: "", dataUrl: null },
@@ -470,7 +579,7 @@
         <div class="form-field">
           <label class="form-field__label">검수일</label>
           <input class="form-field__input" id="fDate" type="date" value="${today}" />
-          <div class="form-field__hint">안전 · 기계/구조 · 전기제어(PLC) · 공정성능 · 문서 5개 항목군, 총 ${CATEGORIES.reduce((n, c) => n + c.items.length, 0)}개 체크리스트가 자동으로 생성됩니다.</div>
+          <div class="form-field__hint" id="tplHint"></div>
         </div>
         <button class="btn btn--primary btn--block" type="submit">검수 시작</button>
       </form>
@@ -478,11 +587,20 @@
     main.appendChild(form);
 
     let selectedType = "FAT";
+    const hint = $("#tplHint", form);
+    const updateHint = () => {
+      hint.textContent =
+        selectedType === "SAT"
+          ? `현장검수용 체크리스트 총 ${templateCount("SAT")}개 항목이 생성됩니다. 항목별 확인 담당 부서(생산 · 품질 · 설비보전 · 안전환경 · 정보시스템 등)가 함께 표시됩니다.`
+          : `공장검수용 체크리스트 총 ${templateCount("FAT")}개 항목이 생성됩니다.`;
+    };
+    updateHint();
     $$(".segmented__opt", form).forEach((btn) => {
       btn.addEventListener("click", () => {
         $$(".segmented__opt", form).forEach((b) => b.classList.remove("is-selected"));
         btn.classList.add("is-selected");
         selectedType = btn.dataset.val;
+        updateHint();
       });
     });
 
@@ -544,7 +662,7 @@
     `);
     main.appendChild(summary);
 
-    CATEGORIES.forEach((cat) => {
+    categoriesOf(insp).forEach((cat) => {
       const catItems = insp.items.filter((it) => it.catId === cat.id);
       const cc = counts(catItems);
       const group = h(`
@@ -580,7 +698,7 @@
       <div class="item ${item.result ? "result-" + item.result : ""}" data-item="${item.id}">
         <div class="item__top">
           <span class="item__num">${String(num).padStart(2, "0")}</span>
-          <span class="item__name">${esc(item.name)}</span>
+          <span class="item__name">${esc(item.name)}${item.dept ? `<span class="item__dept">${esc(item.dept)}</span>` : ""}</span>
         </div>
         <div class="item__controls">
           <button type="button" class="result-btn result-btn--pass ${item.result === "pass" ? "is-selected" : ""}" data-r="pass">합격</button>
@@ -695,17 +813,18 @@
     const v = verdictOf(insp);
 
     let rows = "";
-    CATEGORIES.forEach((cat) => {
+    categoriesOf(insp).forEach((cat) => {
       rows += `<tr class="print-doc__cat-row"><td colspan="5">${esc(cat.name)}</td></tr>`;
       const catItems = insp.items.filter((it) => it.catId === cat.id);
       catItems.forEach((it, i) => {
         const label = it.result ? RESULT_LABEL[it.result] : "미기록";
         const resultClass = it.result ? `r-${it.result}` : "r-pending";
         const photos = (it.photos || []).map((src) => `<img src="${src}" class="print-doc__thumb" />`).join("");
+        const dept = it.dept ? ` <span style="color:#888;font-size:11px;">[${esc(it.dept)}]</span>` : "";
         rows += `
           <tr>
             <td class="print-doc__num">${String(i + 1).padStart(2, "0")}</td>
-            <td>${esc(it.name)}</td>
+            <td>${esc(it.name)}${dept}</td>
             <td class="print-doc__result ${resultClass}">${label}</td>
             <td>${esc(it.comment || "")}</td>
             <td>${photos}</td>
