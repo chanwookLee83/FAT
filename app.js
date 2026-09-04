@@ -542,27 +542,34 @@
 
       const stats = typeStats(all);
 
-      // 우측(모바일에선 목록 아래) 패널: 선택된 검수가 있으면 그 내용을,
-      // 없으면 FAT/SAT 요약을 보여준다.
+      // 우측(모바일에선 목록 위) 패널: 선택된 검수가 있으면 그 요약을,
+      // 없으면 FAT/SAT 개요를 보여준다.
       function renderDetail() {
-        const sel =
-          homeState.selectedId && isWide()
-            ? all.find((i) => i.id === homeState.selectedId)
-            : null;
+        const sel = homeState.selectedId
+          ? all.find((i) => i.id === homeState.selectedId)
+          : null;
         detailCol.innerHTML = "";
-        detailCol.appendChild(sel ? homeDetailView(sel) : homeOverview(stats));
+        detailCol.appendChild(sel ? homeDetailView(sel, backToList) : homeOverview(stats));
       }
 
       function selectInspection(id) {
-        if (isWide()) {
-          homeState.selectedId = id;
-          renderDetail();
-          $$(".session-card", listWrap).forEach((el) =>
-            el.classList.toggle("is-active", el.dataset.id === id)
-          );
-        } else {
-          navigate(`/i/${id}`);
+        homeState.selectedId = id;
+        renderDetail();
+        $$(".session-card", listWrap).forEach((el) =>
+          el.classList.toggle("is-active", el.dataset.id === id)
+        );
+        if (!isWide()) {
+          layout.classList.add("is-detail");
+          window.scrollTo(0, 0);
         }
+      }
+
+      function backToList() {
+        homeState.selectedId = null;
+        layout.classList.remove("is-detail");
+        renderDetail();
+        renderList();
+        window.scrollTo(0, 0);
       }
 
       function applyFilter() {
@@ -611,6 +618,10 @@
       }
       renderList();
       renderDetail();
+      // 이전에 보던 검수가 있으면(전체화면 다녀온 뒤 등) 모바일에서 요약을 유지
+      if (!isWide() && homeState.selectedId && all.some((i) => i.id === homeState.selectedId)) {
+        layout.classList.add("is-detail");
+      }
 
       $$(".tabbar__opt", toolbar).forEach((btn) => {
         btn.addEventListener("click", () => {
@@ -643,7 +654,7 @@
     const dateLine = insp.completedAt
       ? `${esc(insp.inspector || "검수자 미지정")} · ${esc(insp.date)} · 완료 ${fmtDate(insp.completedAt)}`
       : `${esc(insp.inspector || "검수자 미지정")} · ${esc(insp.date)}`;
-    const active = homeState.selectedId === insp.id && isWide() ? " is-active" : "";
+    const active = homeState.selectedId === insp.id ? " is-active" : "";
     const card = h(`
       <button class="session-card${active}" data-id="${insp.id}">
         <span class="session-card__status" style="background:${v.wash};color:${v.color}">${v.label}</span>
@@ -678,12 +689,13 @@
 
   // Right-hand preview of a single inspection: verdict, tallies, category
   // breakdown, failed items, and shortcuts into the full screens.
-  function homeDetailView(insp) {
+  function homeDetailView(insp, onBack) {
     const c = counts(insp.items);
     const v = verdictOf(insp);
     const pct = (n) => (c.total ? (n / c.total) * 100 : 0);
     const el = h(`
       <div class="home-pane">
+        <button class="home-pane__back" data-act="back">← 이력 목록</button>
         <div class="home-pane__top">
           <span class="session-group__badge session-group__badge--${(insp.type || "FAT").toLowerCase()}">${esc(insp.type || "FAT")}</span>
           <span class="home-pane__status" style="background:${v.wash};color:${v.color}">${v.label}</span>
@@ -746,7 +758,8 @@
     $$("[data-act]", el).forEach((b) =>
       b.addEventListener("click", () => {
         const a = b.dataset.act;
-        if (a === "open") navigate(`/i/${insp.id}`);
+        if (a === "back") onBack && onBack();
+        else if (a === "open") navigate(`/i/${insp.id}`);
         else if (a === "summary") navigate(`/i/${insp.id}/summary`);
         else if (a === "print") printInspection(insp);
       })

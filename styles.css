@@ -404,11 +404,33 @@ main {
 .home-detail {
   margin-top: 22px;
 }
+/* mobile: tapping a card swaps the list out for the detail pane */
+.home-layout.is-detail .home-list {
+  display: none;
+}
+.home-layout.is-detail .home-detail {
+  margin-top: 0;
+}
 .home-pane {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   padding: 18px;
+}
+.home-pane__back {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 12px;
+  padding: 0;
+  border: none;
+  background: none;
+  font-size: 13px;
+  font-weight: 700;
+  color: var(--text-dim);
+}
+.home-pane__back:hover {
+  color: var(--text);
 }
 .home-pane__hint {
   font-size: 12.5px;
@@ -567,6 +589,13 @@ main {
     top: calc(72px + var(--safe-top));
     max-height: calc(100vh - 96px - var(--safe-top));
     overflow-y: auto;
+  }
+  /* desktop always shows both panes; no back button */
+  .home-layout.is-detail .home-list {
+    display: block;
+  }
+  .home-pane__back {
+    display: none;
   }
 }
 
