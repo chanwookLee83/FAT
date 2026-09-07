@@ -69,6 +69,9 @@ body {
   line-height: 1.5;
   -webkit-font-smoothing: antialiased;
   overscroll-behavior-y: none;
+  /* 한글은 어절(띄어쓰기) 단위로만 줄바꿈 — '있/습니다' 식 중간 끊김 방지 */
+  word-break: keep-all;
+  overflow-wrap: break-word;
 }
 
 button,
