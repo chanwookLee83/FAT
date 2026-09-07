@@ -171,6 +171,60 @@
     return TEMPLATES[type] || FAT_TEMPLATE;
   }
 
+  /*
+     최종 합격/불합격 판정 기준.
+     항목군(카테고리)별 "허용 불합격(NG) 개수". 그 수를 초과하는 NG가
+     나온 항목군이 하나라도 있으면 최종 불합격. 0 = 무관용(1건이라도 NG면 불합격).
+     현장 기준에 맞게 값을 조정하세요. 새 검수를 만들 때 이 값이 검수 기록에
+     함께 저장되므로, 기준을 바꿔도 과거 검수의 판정은 그대로 유지됩니다.
+  */
+  const NG_LIMIT_DEFAULT = 1;
+  const NG_LIMITS = {
+    FAT: { safety: 0, mech: 1, elec: 1, process: 1, doc: 2 },
+    SAT: { safety: 0, mech: 1, utility: 0, elec: 1, process: 1, doc: 2 },
+  };
+
+  function ngLimitsFor(type) {
+    return { ...(NG_LIMITS[type] || NG_LIMITS.FAT) };
+  }
+
+  // 예전 기록에는 ngLimits가 없으므로 처음 열 때 채워 넣는다.
+  function ensureNgLimits(insp) {
+    if (!insp.ngLimits) insp.ngLimits = ngLimitsFor(insp.type || "FAT");
+    return insp.ngLimits;
+  }
+
+  // 항목군별 NG 집계 + 허용치 + 최종 판정을 한곳에서 계산한다.
+  function judgeInspection(insp) {
+    const limits = ensureNgLimits(insp);
+    const cats = categoriesOf(insp).map((cat) => {
+      const items = insp.items.filter((it) => it.catId === cat.id);
+      const cc = counts(items);
+      const limit = limits[cat.id] != null ? limits[cat.id] : NG_LIMIT_DEFAULT;
+      return {
+        id: cat.id,
+        name: cat.name,
+        varColor: cat.varColor,
+        pass: cc.pass,
+        ng: cc.fail,
+        na: cc.na,
+        pending: cc.pending,
+        total: cc.total,
+        recorded: cc.pass + cc.fail + cc.na,
+        limit,
+        exceeded: cc.fail > limit,
+      };
+    });
+    const totals = counts(insp.items);
+    const failedCats = cats.filter((c) => c.exceeded);
+    let verdict;
+    if (!insp.completedAt) verdict = "progress";
+    else if (totals.pending > 0) verdict = "partial";
+    else if (failedCats.length) verdict = "fail";
+    else verdict = "pass";
+    return { cats, totals, failedCats, ng: totals.fail, verdict };
+  }
+
   // Ordered, de-duplicated category list actually present in an inspection,
   // resolved to display meta. Used by the checklist and the printable report
   // so a category with no items for this type never renders an empty group.
@@ -262,6 +316,7 @@
       createdAt: Date.now(),
       updatedAt: Date.now(),
       items: makeChecklist(type),
+      ngLimits: ngLimitsFor(type),
       signers: [
         { id: uid(), role: "장비 제작처", org: "", name: "", dataUrl: null },
         { id: uid(), role: "인수처(발주처)", org: "", name: "", dataUrl: null },
@@ -296,18 +351,24 @@
 
   // Shared status read used by the history list and the summary screen so
   // the two never disagree about what "완료 / 진행중 / 합격 / 불합격" means.
+  // 판정은 항목군별 허용 NG(judgeInspection) 기준을 따른다.
   function verdictOf(insp) {
-    const c = counts(insp.items);
-    if (!insp.completedAt) {
+    const j = judgeInspection(insp);
+    if (j.verdict === "progress") {
       return { key: "progress", label: "진행중", color: "var(--pending)", wash: "var(--pending-wash)" };
     }
-    if (c.fail > 0) {
-      return { key: "fail", label: "완료 · 불합격 있음", color: "var(--fail)", wash: "var(--fail-wash)" };
-    }
-    if (c.pending > 0) {
+    if (j.verdict === "partial") {
       return { key: "partial", label: "완료 · 미기록 항목 있음", color: "var(--pending)", wash: "var(--pending-wash)" };
     }
-    return { key: "pass", label: "완료 · 합격", color: "var(--pass)", wash: "var(--pass-wash)" };
+    if (j.verdict === "fail") {
+      return { key: "fail", label: "완료 · 불합격", color: "var(--fail)", wash: "var(--fail-wash)" };
+    }
+    return {
+      key: "pass",
+      label: j.ng > 0 ? "완료 · 조건부 합격" : "완료 · 합격",
+      color: "var(--pass)",
+      wash: "var(--pass-wash)",
+    };
   }
 
   /* ---------------------------------------------------------------------
@@ -690,9 +751,18 @@
   // Right-hand preview of a single inspection: verdict, tallies, category
   // breakdown, failed items, and shortcuts into the full screens.
   function homeDetailView(insp, onBack) {
-    const c = counts(insp.items);
+    const j = judgeInspection(insp);
+    const c = j.totals;
     const v = verdictOf(insp);
     const pct = (n) => (c.total ? (n / c.total) * 100 : 0);
+    const critLine =
+      j.verdict === "fail"
+        ? `판정 기준 초과: ${j.failedCats.map((x) => `${x.name}(NG ${x.ng}/${x.limit})`).join(", ")}`
+        : j.verdict === "pass"
+        ? j.ng > 0
+          ? `항목군별 허용 NG 이내 — 조건부 합격 (NG 합계 ${j.ng})`
+          : "NG 없음 — 합격"
+        : "미기록 항목이 남아 판정 보류";
     const el = h(`
       <div class="home-pane">
         <button class="home-pane__back" data-act="back">← 이력 목록</button>
@@ -715,6 +785,7 @@
           ${c.pending ? `<span class="gauge-legend__item"><span class="gauge-legend__dot" style="background:var(--text-faint)"></span>대기 ${c.pending}</span>` : ""}
         </div>
 
+        <div class="home-pane__crit home-pane__crit--${j.verdict}">${esc(critLine)}</div>
         <div class="home-pane__cats"></div>
         <div class="home-pane__actions">
           <button class="btn btn--primary" data-act="open">전체 체크리스트 열기</button>
@@ -725,19 +796,15 @@
     `);
 
     const catsWrap = $(".home-pane__cats", el);
-    categoriesOf(insp).forEach((cat) => {
-      const items = insp.items.filter((it) => it.catId === cat.id);
-      const cc = counts(items);
-      const recorded = cc.pass + cc.fail + cc.na;
+    j.cats.forEach((cj) => {
       catsWrap.appendChild(
         h(`
           <div class="home-pane__cat">
-            <span class="home-pane__cat-bar" style="background:var(${cat.varColor})"></span>
-            <span class="home-pane__cat-name">${esc(cat.name)}</span>
+            <span class="home-pane__cat-bar" style="background:var(${cj.varColor})"></span>
+            <span class="home-pane__cat-name">${esc(cj.name)}</span>
             <span class="home-pane__cat-nums">
-              <b style="color:var(--pass)">${cc.pass}</b> ·
-              <b style="color:var(--fail)">${cc.fail}</b>
-              <span class="home-pane__cat-total">${recorded}/${cc.total}</span>
+              <b class="${cj.exceeded ? "is-over" : ""}" style="color:${cj.exceeded ? "var(--fail)" : "var(--text-faint)"}">NG ${cj.ng}/${cj.limit}</b>
+              <span class="home-pane__cat-total">${cj.recorded}/${cj.total}</span>
             </span>
           </div>
         `)
@@ -862,41 +929,80 @@
     const main = $("#main");
     main.innerHTML = "";
 
-    const c = counts(insp.items);
     const summary = h(`
       <div class="summary-panel">
         <div class="summary-panel__row">
-          <div class="summary-panel__count" style="color:var(--pass)">${c.pass}<small> 합격</small></div>
-          <div class="summary-panel__count" style="color:var(--fail)">${c.fail}<small> 불합격</small></div>
-          <div class="summary-panel__count" style="color:var(--text-dim)">${c.na}<small> 해당없음</small></div>
-          <div class="summary-panel__count" style="color:var(--pending)">${c.pending}<small> 대기</small></div>
+          <div class="summary-panel__count" style="color:var(--pass)"><span data-k="pass">0</span><small> 합격</small></div>
+          <div class="summary-panel__count" style="color:var(--fail)"><span data-k="fail">0</span><small> 불합격</small></div>
+          <div class="summary-panel__count" style="color:var(--text-dim)"><span data-k="na">0</span><small> 해당없음</small></div>
+          <div class="summary-panel__count" style="color:var(--pending)"><span data-k="pending">0</span><small> 대기</small></div>
         </div>
         <div class="gauge">
-          <span class="gauge__seg gauge__seg--pass" style="width:${(c.pass / c.total) * 100}%"></span>
-          <span class="gauge__seg gauge__seg--fail" style="width:${(c.fail / c.total) * 100}%"></span>
-          <span class="gauge__seg gauge__seg--na" style="width:${(c.na / c.total) * 100}%"></span>
+          <span class="gauge__seg gauge__seg--pass" data-k="passbar"></span>
+          <span class="gauge__seg gauge__seg--fail" data-k="failbar"></span>
+          <span class="gauge__seg gauge__seg--na" data-k="nabar"></span>
         </div>
+        <div class="verdict-line" data-k="verdict"></div>
       </div>
     `);
     main.appendChild(summary);
 
-    categoriesOf(insp).forEach((cat) => {
-      const catItems = insp.items.filter((it) => it.catId === cat.id);
-      const cc = counts(catItems);
+    // 항목군 헤드와 상단 요약을 판정 결과에 맞춰 다시 칠한다(항목 체크 시 즉시 반영).
+    const headEls = {}; // catId -> head element
+    function repaint() {
+      const j = judgeInspection(insp);
+      const c = j.totals;
+      $('[data-k="pass"]', summary).textContent = c.pass;
+      $('[data-k="fail"]', summary).textContent = c.fail;
+      $('[data-k="na"]', summary).textContent = c.na;
+      $('[data-k="pending"]', summary).textContent = c.pending;
+      $('[data-k="passbar"]', summary).style.width = `${(c.pass / c.total) * 100}%`;
+      $('[data-k="failbar"]', summary).style.width = `${(c.fail / c.total) * 100}%`;
+      $('[data-k="nabar"]', summary).style.width = `${(c.na / c.total) * 100}%`;
+
+      const vEl = $('[data-k="verdict"]', summary);
+      if (c.pending > 0) {
+        vEl.className = "verdict-line is-pending";
+        vEl.textContent = `미기록 ${c.pending}건 — 모두 판정해야 최종 합격/불합격이 확정됩니다`;
+      } else if (j.failedCats.length) {
+        vEl.className = "verdict-line is-fail";
+        vEl.textContent = `불합격 — ${j.failedCats.map((x) => `${x.name} NG ${x.ng}/${x.limit}`).join(", ")} 초과`;
+      } else {
+        vEl.className = "verdict-line is-pass";
+        vEl.textContent = j.ng > 0 ? `조건부 합격 — 허용 NG 이내 (NG 합계 ${j.ng})` : "합격 — NG 없음";
+      }
+
+      j.cats.forEach((cj) => {
+        const head = headEls[cj.id];
+        if (!head) return;
+        $(".category-group__ratio", head).textContent = `${cj.recorded}/${cj.total}`;
+        const ng = $(".category-group__ng", head);
+        ng.textContent = `NG ${cj.ng}/${cj.limit}`;
+        ng.classList.toggle("is-over", cj.exceeded);
+      });
+    }
+
+    const judged = judgeInspection(insp);
+    judged.cats.forEach((cj) => {
+      const catItems = insp.items.filter((it) => it.catId === cj.id);
       const group = h(`
         <section class="category-group">
           <div class="category-group__head">
-            <span class="category-group__bar" style="background:var(${cat.varColor})"></span>
-            <span class="category-group__name">${esc(cat.name)}</span>
-            <span class="category-group__ratio">${cc.pass + cc.fail + cc.na}/${cc.total}</span>
+            <span class="category-group__bar" style="background:var(${cj.varColor})"></span>
+            <span class="category-group__name">${esc(cj.name)}</span>
+            <span class="category-group__ratio">${cj.recorded}/${cj.total}</span>
+            <span class="category-group__ng ${cj.exceeded ? "is-over" : ""}">NG ${cj.ng}/${cj.limit}</span>
           </div>
           <div class="category-group__items"></div>
         </section>
       `);
+      headEls[cj.id] = $(".category-group__head", group);
       const itemsWrap = $(".category-group__items", group);
-      catItems.forEach((it, i) => itemsWrap.appendChild(itemRow(insp, it, i + 1)));
+      catItems.forEach((it, i) => itemsWrap.appendChild(itemRow(insp, it, i + 1, repaint)));
       main.appendChild(group);
     });
+
+    repaint();
 
     const footer = h(`
       <div class="footer-actions" style="flex-wrap:wrap;">
@@ -911,7 +1017,7 @@
     $("#toSummaryBtn", footer).addEventListener("click", () => navigate(`/i/${id}/summary`));
   }
 
-  function itemRow(insp, item, num) {
+  function itemRow(insp, item, num, onChange) {
     const row = h(`
       <div class="item ${item.result ? "result-" + item.result : ""}" data-item="${item.id}">
         <div class="item__top">
@@ -942,6 +1048,7 @@
         upsertInspection(insp);
         row.className = `item ${item.result ? "result-" + item.result : ""}`;
         $$(".result-btn", row).forEach((b) => b.classList.toggle("is-selected", b.dataset.r === item.result));
+        if (onChange) onChange();
       });
     });
 
@@ -1027,8 +1134,19 @@
   // not just the failed ones — plus the signer block. Used by both the
   // checklist screen and the summary screen's 인쇄/PDF 저장 button.
   function buildPrintDoc(insp) {
-    const c = counts(insp.items);
-    const v = verdictOf(insp);
+    const j = judgeInspection(insp);
+    const c = j.totals;
+    const finalMark =
+      j.verdict === "fail" ? "불합격" : j.verdict === "partial" ? "판정 보류" : j.ng > 0 ? "조건부 합격" : "합격";
+
+    const critRows = j.cats
+      .map(
+        (cj) =>
+          `<tr><td>${esc(cj.name)}</td><td style="text-align:center">${cj.ng}</td><td style="text-align:center">${cj.limit}</td><td style="text-align:center">${
+            cj.exceeded ? "불합격" : cj.pending ? "미기록" : "적합"
+          }</td></tr>`
+      )
+      .join("");
 
     let rows = "";
     categoriesOf(insp).forEach((cat) => {
@@ -1068,9 +1186,16 @@
         <table class="print-doc__meta">
           <tr><th>장비명</th><td>${esc(insp.equipmentName)}</td><th>구분</th><td>${esc(insp.type)}</td></tr>
           <tr><th>검수일</th><td>${esc(insp.date)}</td><th>검수자</th><td>${esc(insp.inspector || "-")}</td></tr>
-          <tr><th>결과</th><td colspan="3">${esc(v.label)} — 합격 ${c.pass} · 불합격 ${c.fail} · 해당없음 ${c.na} · 미기록 ${c.pending} (총 ${c.total}건)</td></tr>
+          <tr><th>집계</th><td colspan="3">합격 ${c.pass} · 불합격 ${c.fail} · 해당없음 ${c.na} · 미기록 ${c.pending} (총 ${c.total}건)</td></tr>
+          <tr><th>최종 판정</th><td colspan="3" style="font-weight:700">${finalMark}${
+            j.failedCats.length ? ` — ${j.failedCats.map((x) => `${esc(x.name)}(NG ${x.ng}/${x.limit})`).join(", ")} 초과` : ""
+          }</td></tr>
         </table>
       </div>
+      <table class="print-doc__meta" style="margin-top:6px">
+        <thead><tr><th>항목군</th><th style="text-align:center">NG</th><th style="text-align:center">허용</th><th style="text-align:center">판정</th></tr></thead>
+        <tbody>${critRows}</tbody>
+      </table>
       <table class="print-doc__table">
         <thead><tr><th>No</th><th>항목</th><th>결과</th><th>비고</th><th>사진</th></tr></thead>
         <tbody>${rows}</tbody>
@@ -1118,11 +1243,13 @@
     const main = $("#main");
     main.innerHTML = "";
 
-    const c = counts(insp.items);
+    const j = judgeInspection(insp);
+    const c = j.totals;
     const verdict =
-      c.fail > 0 ? { label: "불합격 항목 있음", color: "var(--fail)" } :
-      c.pending > 0 ? { label: "검수 진행 중", color: "var(--pending)" } :
-      { label: "전 항목 합격", color: "var(--pass)" };
+      j.verdict === "fail" ? { label: "불합격", color: "var(--fail)" } :
+      j.verdict === "partial" ? { label: "판정 보류 · 미기록 항목", color: "var(--pending)" } :
+      j.ng > 0 ? { label: "조건부 합격", color: "var(--pass)" } :
+      { label: "합격", color: "var(--pass)" };
 
     const panel = h(`
       <div class="summary-panel">
@@ -1142,6 +1269,30 @@
       </div>
     `);
     main.appendChild(panel);
+
+    // 항목군별 NG vs 허용치 판정표
+    const crit = h(`
+      <section class="category-group">
+        <div class="category-group__head">
+          <span class="category-group__bar" style="background:var(--text-dim)"></span>
+          <span class="category-group__name">판정 기준 (항목군별 허용 NG)</span>
+        </div>
+        <div class="judge-table"></div>
+      </section>
+    `);
+    const jt = $(".judge-table", crit);
+    j.cats.forEach((cj) => {
+      jt.appendChild(
+        h(`
+          <div class="judge-row ${cj.exceeded ? "is-over" : ""}">
+            <span class="judge-row__name">${esc(cj.name)}</span>
+            <span class="judge-row__ng">NG ${cj.ng} / 허용 ${cj.limit}</span>
+            <span class="judge-row__mark">${cj.exceeded ? "불합격" : cj.pending ? "미기록" : "적합"}</span>
+          </div>
+        `)
+      );
+    });
+    main.appendChild(crit);
 
     const failItems = insp.items.filter((it) => it.result === "fail");
     if (failItems.length) {
@@ -1259,6 +1410,10 @@
     });
     $("#exportBtn2", footer).addEventListener("click", () => exportInspection(insp));
     $("#completeBtn", footer).addEventListener("click", () => {
+      const pend = counts(insp.items).pending;
+      if (pend > 0 && !confirm(`미기록 항목이 ${pend}건 있습니다. 이대로 마무리하면 '판정 보류'로 저장됩니다. 계속할까요?`)) {
+        return;
+      }
       syncSignersFromPads();
       insp.completedAt = Date.now();
       const ok = upsertInspection(insp);
