@@ -279,7 +279,20 @@
 
   function deleteInspection(id) {
     const all = loadAll().filter((i) => i.id !== id);
-    saveAll(all);
+    return saveAll(all);
+  }
+
+  // Confirm, delete, and clear any home selection pointing at it.
+  // Returns true when the record was actually removed.
+  function confirmDeleteInspection(insp) {
+    const msg = insp.completedAt
+      ? `완료된 검수 "${insp.equipmentName}"을(를) 삭제할까요?\n서명·사진 포함 모든 기록이 지워지며 되돌릴 수 없습니다.`
+      : `"${insp.equipmentName}" 검수를 삭제할까요? 되돌릴 수 없습니다.`;
+    if (!confirm(msg)) return false;
+    if (!deleteInspection(insp.id)) return false;
+    if (homeState.selectedId === insp.id) homeState.selectedId = null;
+    toast("검수를 삭제했습니다");
+    return true;
   }
 
   function uid() {
@@ -791,6 +804,7 @@
           <button class="btn btn--primary" data-act="open">전체 체크리스트 열기</button>
           <button class="btn" data-act="summary">요약 · 서명</button>
           <button class="btn" data-act="print">인쇄 / PDF</button>
+          <button class="btn btn--danger" data-act="delete">삭제</button>
         </div>
       </div>
     `);
@@ -829,6 +843,10 @@
         else if (a === "open") navigate(`/i/${insp.id}`);
         else if (a === "summary") navigate(`/i/${insp.id}/summary`);
         else if (a === "print") printInspection(insp);
+        else if (a === "delete" && confirmDeleteInspection(insp)) {
+          window.scrollTo(0, 0);
+          renderHome();
+        }
       })
     );
 
@@ -919,10 +937,7 @@
 
     const menuBtn = h(`<button class="icon-btn" aria-label="삭제" title="검수 삭제">🗑</button>`);
     menuBtn.addEventListener("click", () => {
-      if (confirm(`"${insp.equipmentName}" 검수를 삭제할까요? 되돌릴 수 없습니다.`)) {
-        deleteInspection(id);
-        navigate("/");
-      }
+      if (confirmDeleteInspection(insp)) navigate("/");
     });
     setTopbar({ eyebrow: `${insp.type} · ${insp.date}`, title: insp.equipmentName, showBack: true, action: menuBtn });
 
@@ -1238,7 +1253,11 @@
       navigate("/");
       return;
     }
-    setTopbar({ eyebrow: `${insp.type} · ${insp.date}`, title: "검수 요약", showBack: true });
+    const delBtn = h(`<button class="icon-btn" aria-label="삭제" title="검수 삭제">🗑</button>`);
+    delBtn.addEventListener("click", () => {
+      if (confirmDeleteInspection(insp)) navigate("/");
+    });
+    setTopbar({ eyebrow: `${insp.type} · ${insp.date}`, title: "검수 요약", showBack: true, action: delBtn });
 
     const main = $("#main");
     main.innerHTML = "";
